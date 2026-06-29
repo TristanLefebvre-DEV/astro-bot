@@ -88,6 +88,17 @@ function addOption(builder: SlashCommandSubcommandBuilder, option: GenericOption
   return builder;
 }
 
+function isRequiredOption(option: GenericOption): boolean {
+  return option !== "reason";
+}
+
+function orderDiscordOptions(options: GenericOption[]): GenericOption[] {
+  return [
+    ...options.filter(isRequiredOption),
+    ...options.filter((option) => !isRequiredOption(option))
+  ];
+}
+
 function describeOptions(subcommand: GenericSubcommand, values: string[]): string {
   const optionText = values.length > 0 ? `\nOptions reçues:\n${values.join("\n")}` : "";
   const dangerousText = subcommand.dangerous
@@ -106,7 +117,7 @@ export function createGenericCommandGroup(group: GenericCommandGroup): SlashComm
         ? [...(subcommand.options ?? []), ...((subcommand.options ?? []).includes("confirm") ? [] : ["confirm" as const])]
         : subcommand.options ?? [];
 
-      for (const option of options) configured = addOption(configured, option);
+      for (const option of orderDiscordOptions(options)) configured = addOption(configured, option);
       return configured;
     });
   }
