@@ -14,10 +14,18 @@ export async function syncCommands(commands: Collection<string, SlashCommand>): 
     }
 
     await rest.put(Routes.applicationGuildCommands(config.CLIENT_ID, config.GUILD_ID), { body });
-    logger.info(`Slash commands synchronisées en mode guild (${body.length})`);
+    if (config.CLEAR_OLD_COMMAND_SCOPE) {
+      await rest.put(Routes.applicationCommands(config.CLIENT_ID), { body: [] });
+      logger.info("Anciennes slash commands globales supprimees");
+    }
+    logger.info(`Slash commands synchronisees en mode guild (${body.length})`);
     return;
   }
 
   await rest.put(Routes.applicationCommands(config.CLIENT_ID), { body });
-  logger.info(`Slash commands synchronisées en mode global (${body.length})`);
+  if (config.CLEAR_OLD_COMMAND_SCOPE && config.GUILD_ID) {
+    await rest.put(Routes.applicationGuildCommands(config.CLIENT_ID, config.GUILD_ID), { body: [] });
+    logger.info("Anciennes slash commands serveur supprimees");
+  }
+  logger.info(`Slash commands synchronisees en mode global (${body.length})`);
 }

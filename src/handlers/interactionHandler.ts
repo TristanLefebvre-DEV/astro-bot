@@ -5,6 +5,7 @@ import { ensureCommandPermissions } from "./permissionHandler.js";
 import { ensureCooldown } from "./cooldownHandler.js";
 import { handlePanelComponent } from "../modules/panels/panelService.js";
 import { handleGiveawayButton } from "../modules/giveaways/giveawayService.js";
+import { handleTicketComponent } from "../modules/tickets/ticketService.js";
 
 async function replyWithError(interaction: ChatInputCommandInteraction): Promise<void> {
   const payload = {
@@ -25,11 +26,14 @@ async function replyWithError(interaction: ChatInputCommandInteraction): Promise
 }
 
 export async function handleInteraction(client: Client<true>, interaction: Interaction): Promise<void> {
-  if (interaction.isButton() || interaction.isStringSelectMenu()) {
+  if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
     try {
+      if ((interaction.isButton() || interaction.isModalSubmit()) && (await handleTicketComponent(interaction))) return;
       if (interaction.isButton() && (await handleGiveawayButton(interaction))) return;
-      const handled = await handlePanelComponent(interaction);
-      if (handled) return;
+      if (interaction.isButton() || interaction.isStringSelectMenu()) {
+        const handled = await handlePanelComponent(interaction);
+        if (handled) return;
+      }
     } catch (error) {
       logger.error("Erreur interaction panel", error);
       if (!interaction.replied && !interaction.deferred) {

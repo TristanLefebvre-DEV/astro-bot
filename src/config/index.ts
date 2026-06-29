@@ -6,6 +6,10 @@ const envSchema = z.object({
   CLIENT_ID: z.string().min(1),
   GUILD_ID: z.string().optional().default(""),
   COMMAND_SYNC_MODE: z.enum(["guild", "global"]).default("guild"),
+  CLEAR_OLD_COMMAND_SCOPE: z
+    .string()
+    .default("true")
+    .transform((value) => value === "true"),
   DATABASE_URL: z.string().min(1),
   OWNER_IDS: z.string().optional().default(""),
   DEFAULT_LANGUAGE: z.string().default("fr"),
