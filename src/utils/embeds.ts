@@ -1,4 +1,4 @@
-import { EmbedBuilder, type Guild, type User } from "discord.js";
+import { EmbedBuilder, type APIEmbedField, type Guild, type User } from "discord.js";
 
 export const embedTheme = {
   colors: {
@@ -15,19 +15,19 @@ export const embedTheme = {
     maintenance: 0x2b2d31
   },
   icons: {
-    success: "✅",
-    error: "⛔",
-    warning: "⚠️",
-    info: "ℹ️",
-    moderation: "🛡️",
-    ticket: "🎫",
-    security: "🔐",
-    logs: "📋",
-    confirmation: "❔",
-    dashboard: "📊",
-    maintenance: "🛠️"
+    success: "[OK]",
+    error: "[!]",
+    warning: "[!]",
+    info: "[i]",
+    moderation: "[MOD]",
+    ticket: "[TICKET]",
+    security: "[SEC]",
+    logs: "[LOG]",
+    confirmation: "[?]",
+    dashboard: "[DASH]",
+    maintenance: "[MAINT]"
   },
-  footer: "Astro Bot • Interface Discord"
+  footer: "Astro Bot - Interface Discord"
 } as const;
 
 type EmbedKind = keyof typeof embedTheme.colors;
@@ -43,24 +43,51 @@ interface EmbedOptions {
   timestamp?: boolean;
 }
 
-function cleanDescription(description?: string): string | null {
-  if (!description) return null;
-  return description.length > 3900 ? `${description.slice(0, 3890)}...` : description;
+function cleanText(text?: string): string | null {
+  if (!text) return null;
+  const cleaned = text
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  return cleaned.length > 3900 ? `${cleaned.slice(0, 3890)}...` : cleaned;
+}
+
+function normalizeField(field: APIEmbedField): APIEmbedField {
+  return {
+    name: field.name,
+    value: cleanText(field.value) ?? "\u200B",
+    inline: false
+  };
+}
+
+function makeSpacious(embed: EmbedBuilder): EmbedBuilder {
+  const originalAddFields = embed.addFields.bind(embed);
+
+  embed.addFields = ((...fields: any[]) => {
+    const normalized = fields
+      .flatMap((field) => (Array.isArray(field) ? field : [field]))
+      .map((field) => (typeof field === "function" ? field : normalizeField(field)));
+    return originalAddFields(...normalized);
+  }) as typeof embed.addFields;
+
+  return embed;
 }
 
 function baseEmbed(kind: EmbedKind, options: EmbedOptions): EmbedBuilder {
   const icon = embedTheme.icons[kind];
-  const embed = new EmbedBuilder()
+  const embed = makeSpacious(new EmbedBuilder())
     .setColor(embedTheme.colors[kind])
     .setTitle(`${icon} ${options.title}`)
-    .setDescription(cleanDescription(options.description));
+    .setDescription(cleanText(options.description));
 
   if (options.timestamp !== false) embed.setTimestamp();
 
   if (options.thumbnail) embed.setThumbnail(options.thumbnail);
   if (options.image) embed.setImage(options.image);
 
-  const footerText = options.footer ?? (options.guild ? `${options.guild.name} • ${embedTheme.footer}` : embedTheme.footer);
+  const footerText = options.footer ?? (options.guild ? `${options.guild.name} - ${embedTheme.footer}` : embedTheme.footer);
   embed.setFooter({
     text: footerText,
     iconURL: options.guild?.iconURL() ?? undefined

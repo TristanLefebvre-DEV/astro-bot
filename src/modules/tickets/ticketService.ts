@@ -31,40 +31,26 @@ const deleteTicketCustomId = "ticket:delete";
 const addMemberCustomId = "ticket:add_member";
 const addMemberModalCustomId = "ticket:add_member_modal";
 
-const ticketCategories: Record<string, { label: string; emoji: string; description: string }> = {
-  support: { label: "Support", emoji: "🛠️", description: "Aide generale, question ou probleme simple." },
-  report: { label: "Signalement", emoji: "🚨", description: "Signaler un membre, un bug ou un abus." },
-  billing: { label: "Boutique", emoji: "💳", description: "Achat, paiement, recompense ou premium." },
-  appeal: { label: "Contestations", emoji: "⚖️", description: "Contester une sanction ou demander une verification." },
-  other: { label: "Autre demande", emoji: "📩", description: "Demande qui ne rentre pas dans les autres categories." }
+const ticketCategories: Record<string, { label: string; tag: string; description: string }> = {
+  support: { label: "Support", tag: "[SUPPORT]", description: "Aide generale, question ou probleme simple." },
+  report: { label: "Signalement", tag: "[REPORT]", description: "Signaler un membre, un bug ou un abus." },
+  billing: { label: "Boutique", tag: "[SHOP]", description: "Achat, paiement, recompense ou premium." },
+  appeal: { label: "Contestations", tag: "[APPEL]", description: "Contester une sanction ou demander une verification." },
+  other: { label: "Autre demande", tag: "[AUTRE]", description: "Demande qui ne rentre pas dans les autres categories." }
 };
 const fallbackTicketCategory = ticketCategories.support!;
 
 function ticketControls(disabled = false): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(closeTicketCustomId)
-      .setLabel("Fermer")
-      .setEmoji("🔒")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(disabled),
-    new ButtonBuilder()
-      .setCustomId(deleteTicketCustomId)
-      .setLabel("Supprimer")
-      .setEmoji("🗑️")
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(addMemberCustomId)
-      .setLabel("Ajouter")
-      .setEmoji("➕")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(disabled)
+    new ButtonBuilder().setCustomId(closeTicketCustomId).setLabel("Fermer").setStyle(ButtonStyle.Secondary).setDisabled(disabled),
+    new ButtonBuilder().setCustomId(deleteTicketCustomId).setLabel("Supprimer").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(addMemberCustomId).setLabel("Ajouter un membre").setStyle(ButtonStyle.Primary).setDisabled(disabled)
   );
 }
 
 function openTicketRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(openTicketCustomId).setLabel("Creer un ticket").setEmoji("🎫").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(openTicketCustomId).setLabel("Creer un ticket").setStyle(ButtonStyle.Primary)
   );
 }
 
@@ -77,11 +63,16 @@ function ticketCategoryRow(): ActionRowBuilder<StringSelectMenuBuilder> {
         Object.entries(ticketCategories).map(([value, category]) => ({
           label: category.label,
           value,
-          emoji: category.emoji,
           description: category.description
         }))
       )
   );
+}
+
+function categoryPanelText(): string {
+  return Object.values(ticketCategories)
+    .map((category) => `**${category.tag} ${category.label}**\n${category.description}`)
+    .join("\n\n");
 }
 
 export async function getGuildConfig(guildId: string): Promise<any> {
@@ -151,16 +142,18 @@ export async function createTicketChannel(input: {
       embeds.ticket({
         title: "Ticket ouvert",
         description: [
-          `Categorie: **${category.emoji} ${category.label}**`,
+          `Categorie: **${category.tag} ${category.label}**`,
           `Auteur: ${input.owner}`,
           "",
-          "Explique ton besoin clairement et ajoute les preuves utiles si necessaire.",
+          "Explique ton besoin clairement.",
+          "Ajoute les preuves, captures ou IDs utiles si necessaire.",
+          "",
           "Le staff prendra le ticket des que possible."
         ].join("\n"),
         guild: input.guild
       }).addFields(
-        { name: "Statut", value: "Ouvert", inline: true },
-        { name: "Priorite", value: input.type === "report" ? "Haute" : "Normale", inline: true }
+        { name: "Statut", value: "Ouvert" },
+        { name: "Priorite", value: input.type === "report" ? "Haute" : "Normale" }
       )
     ],
     components: [ticketControls()]
@@ -179,18 +172,14 @@ export async function sendTicketPanel(input: {
       embeds.ticket({
         title: "Centre de support",
         description: [
-          "Ouvre un ticket uniquement si ta demande necessite une reponse du staff.",
-          "Choisis la categorie la plus proche de ton probleme pour accelerer la prise en charge."
+          "Ouvre un ticket seulement si ta demande necessite une reponse du staff.",
+          "Choisis la categorie la plus proche de ton probleme pour accelerer la prise en charge.",
+          "",
+          categoryPanelText()
         ].join("\n"),
         guild: input.guild,
         user: input.createdBy
-      }).addFields(
-        { name: "🛠️ Support", value: "Questions, aide generale, probleme simple.", inline: true },
-        { name: "🚨 Signalement", value: "Membre, bug, abus ou situation urgente.", inline: true },
-        { name: "💳 Boutique", value: "Achat, paiement, premium ou recompense.", inline: true },
-        { name: "⚖️ Contestations", value: "Sanction, verification ou appel.", inline: true },
-        { name: "📩 Autre", value: "Demande particuliere.", inline: true }
-      )
+      })
     ],
     components: [ticketCategoryRow(), openTicketRow()]
   });
@@ -326,7 +315,7 @@ export async function handleTicketComponent(
       embeds: [
         embeds.success({
           title: "Ticket cree",
-          description: `Categorie: **${category.emoji} ${category.label}**\nSalon: ${channel}`
+          description: [`Categorie: **${category.tag} ${category.label}**`, "", `Salon: ${channel}`].join("\n")
         })
       ],
       ephemeral: true
@@ -346,7 +335,7 @@ export async function handleTicketComponent(
     }
     await closeTicket({ guild: interaction.guild, channel, closedBy: interaction.user, reason: "Fermeture via bouton" });
     await interaction.reply({
-      embeds: [embeds.success({ title: "Ticket ferme", description: "Le ticket est verrouille. Tu peux maintenant le supprimer." })],
+      embeds: [embeds.success({ title: "Ticket ferme", description: "Le ticket est verrouille.\n\nTu peux maintenant le supprimer." })],
       ephemeral: true
     });
     return true;
