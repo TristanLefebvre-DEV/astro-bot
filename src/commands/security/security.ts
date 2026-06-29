@@ -1,5 +1,6 @@
-import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import { ChannelType, PermissionFlagsBits, SlashCommandBuilder, type GuildTextBasedChannel } from "discord.js";
 import type { SlashCommand } from "../../types/command.js";
+import { sendSecurityPanel } from "../../modules/security/securityPanelService.js";
 import { embeds } from "../../utils/embeds.js";
 
 const dangerousPermissions = [
@@ -36,14 +37,49 @@ const command: SlashCommand = {
   userPermissions: [PermissionFlagsBits.ManageGuild],
   data: new SlashCommandBuilder()
     .setName("security")
-    .setDescription("Audit sécurité serveur.")
-    .addSubcommand((sub) => sub.setName("status").setDescription("Résumé sécurité du serveur."))
-    .addSubcommand((sub) => sub.setName("scan").setDescription("Scanner les rôles dangereux."))
+    .setDescription("Audit securite serveur.")
+    .addSubcommand((sub) => sub.setName("status").setDescription("Resume securite du serveur."))
+    .addSubcommand((sub) =>
+      sub
+        .setName("panel")
+        .setDescription("Envoyer le panel interactif de securite.")
+        .addChannelOption((option) =>
+          option
+            .setName("channel")
+            .setDescription("Salon ou envoyer le panel.")
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((sub) => sub.setName("scan").setDescription("Scanner les roles dangereux."))
     .addSubcommand((sub) => sub.setName("adminlist").setDescription("Lister les membres administrateurs."))
     .addSubcommand((sub) => sub.setName("botlist").setDescription("Lister les bots du serveur.")),
   async execute(interaction) {
     if (!interaction.inCachedGuild()) return;
     const subcommand = interaction.options.getSubcommand();
+
+    if (subcommand === "panel") {
+      const channel = (interaction.options.getChannel("channel") ?? interaction.channel) as GuildTextBasedChannel | null;
+      if (!channel || !("send" in channel)) {
+        await interaction.reply({
+          embeds: [
+            embeds.error({
+              title: "Salon invalide",
+              description: "Choisis un salon textuel ou lance la commande dans un salon textuel."
+            })
+          ],
+          ephemeral: true
+        });
+        return;
+      }
+
+      await sendSecurityPanel({ guild: interaction.guild, channel, createdBy: interaction.user });
+      await interaction.reply({
+        embeds: [embeds.success({ title: "Panel envoye", description: `Le panel securite a ete envoye dans ${channel}.` })],
+        ephemeral: true
+      });
+      return;
+    }
 
     if (subcommand === "status") {
       const rolesWithDanger = interaction.guild.roles.cache.filter((role) =>
@@ -53,13 +89,13 @@ const command: SlashCommand = {
       await interaction.reply({
         embeds: [
           embeds.security({
-            title: "Statut sécurité",
+            title: "Statut securite",
             description: [
-              `Rôles sensibles: **${rolesWithDanger.size}**`,
+              `Roles sensibles: **${rolesWithDanger.size}**`,
               `Bots: **${bots.size}**`,
               `MFA serveur: **${interaction.guild.mfaLevel}**`,
-              `Niveau vérification: **${interaction.guild.verificationLevel}**`,
-              "Les scores restent indicatifs et doivent être validés par un humain."
+              `Niveau verification: **${interaction.guild.verificationLevel}**`,
+              "Les scores restent indicatifs et doivent etre valides par un humain."
             ].join("\n"),
             guild: interaction.guild
           })
@@ -82,8 +118,8 @@ const command: SlashCommand = {
       await interaction.reply({
         embeds: [
           embeds.security({
-            title: "Rôles dangereux",
-            description: rows.join("\n") || "Aucun rôle dangereux détecté.",
+            title: "Roles dangereux",
+            description: rows.join("\n") || "Aucun role dangereux detecte.",
             guild: interaction.guild
           })
         ],
@@ -103,7 +139,7 @@ const command: SlashCommand = {
         embeds: [
           embeds.security({
             title: "Administrateurs",
-            description: admins.join("\n") || "Aucun administrateur humain détecté.",
+            description: admins.join("\n") || "Aucun administrateur humain detecte.",
             guild: interaction.guild
           })
         ],
@@ -116,14 +152,14 @@ const command: SlashCommand = {
       await interaction.guild.members.fetch();
       const bots = interaction.guild.members.cache
         .filter((member) => member.user.bot)
-        .map((member) => `${member.user.tag} (${member.id}) - rôle haut: ${member.roles.highest}`)
+        .map((member) => `${member.user.tag} (${member.id}) - role haut: ${member.roles.highest}`)
         .slice(0, 30);
 
       await interaction.reply({
         embeds: [
           embeds.security({
             title: "Bots du serveur",
-            description: bots.join("\n") || "Aucun bot détecté.",
+            description: bots.join("\n") || "Aucun bot detecte.",
             guild: interaction.guild
           })
         ],

@@ -6,6 +6,7 @@ import { ensureCooldown } from "./cooldownHandler.js";
 import { handlePanelComponent } from "../modules/panels/panelService.js";
 import { handleGiveawayButton } from "../modules/giveaways/giveawayService.js";
 import { handleTicketComponent } from "../modules/tickets/ticketService.js";
+import { handleSecurityComponent } from "../modules/security/securityPanelService.js";
 
 async function replyWithError(interaction: ChatInputCommandInteraction): Promise<void> {
   const payload = {
@@ -29,6 +30,7 @@ export async function handleInteraction(client: Client<true>, interaction: Inter
   if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
     try {
       if ((interaction.isButton() || interaction.isModalSubmit()) && (await handleTicketComponent(interaction))) return;
+      if (interaction.isStringSelectMenu() && (await handleSecurityComponent(interaction))) return;
       if (interaction.isButton() && (await handleGiveawayButton(interaction))) return;
       if (interaction.isButton() || interaction.isStringSelectMenu()) {
         const handled = await handlePanelComponent(interaction);

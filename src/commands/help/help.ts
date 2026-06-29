@@ -1,75 +1,92 @@
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { SlashCommand } from "../../types/command.js";
 import { config } from "../../config/index.js";
-import { paginateEmbeds } from "../../utils/pagination.js";
+
+const categoryLabels: Record<string, string> = {
+  help: "Aide",
+  owner: "Owner",
+  config: "Configuration",
+  moderation: "Moderation",
+  tickets: "Tickets",
+  security: "Securite",
+  utility: "Utilitaires"
+};
+
+interface CommandOptionView {
+  type?: number;
+  name?: string;
+}
+
+function optionNames(options?: CommandOptionView[]): string[] {
+  return (options ?? [])
+    .filter((option) => option.type === 1)
+    .map((option) => option.name)
+    .filter((name): name is string => Boolean(name))
+    .slice(0, 12);
+}
+
+function commandLine(command: SlashCommand): string {
+  const json = command.data.toJSON();
+  const subs = optionNames(json.options as CommandOptionView[] | undefined);
+  const suffix = subs.length > 0 ? ` ${subs.join(" ")}` : "";
+  return `\`/${json.name}${suffix}\` - ${json.description}`;
+}
+
+function splitFieldValue(lines: string[]): string[] {
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const line of lines) {
+    const next = current ? `${current}\n${line}` : line;
+    if (next.length > 980) {
+      chunks.push(current);
+      current = line;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
 
 const command: SlashCommand = {
   category: "help",
   cooldownSeconds: 5,
-  data: new SlashCommandBuilder()
-    .setName("help")
-    .setDescription("Affiche le centre d'aide interactif.")
-    .addStringOption((option) =>
-      option.setName("category").setDescription("Catégorie à afficher directement.").setRequired(false)
-    )
-    .addStringOption((option) =>
-      option.setName("command").setDescription("Commande à rechercher.").setRequired(false)
-    ),
+  data: new SlashCommandBuilder().setName("help").setDescription("Affiche toutes les commandes du bot."),
   async execute(interaction, { client }) {
-    const categoryFilter = interaction.options.getString("category");
-    const commandFilter = interaction.options.getString("command");
-    const commands = [...client.commands.values()];
-    const categories = [...new Set(commands.map((item) => item.category))].sort();
+    const commands = [...client.commands.values()].sort((a, b) => {
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return a.data.name.localeCompare(b.data.name);
+    });
+    const categories = [...new Set(commands.map((item) => item.category))];
 
-    if (commandFilter) {
-      const found = commands.find((item) => item.data.name === commandFilter.replace("/", ""));
-      const embed = new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle(found ? `/${found.data.name}` : "Commande introuvable")
-        .setDescription(found?.data.description ?? "Aucune commande ne correspond à cette recherche.")
-        .addFields(
-          { name: "Catégorie", value: found?.category ?? "n/a", inline: true },
-          { name: "Cooldown", value: `${found?.cooldownSeconds ?? 3}s`, inline: true },
-          { name: "Owner only", value: found?.ownerOnly ? "Oui" : "Non", inline: true }
-        )
-        .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("Centre d'aide Astro")
+      .setDescription(
+        [
+          `Commandes chargees: **${commands.length}**`,
+          `Categories: **${categories.length}**`,
+          `Dashboard: **${config.DASHBOARD_ENABLED ? "active" : "desactive"}**`,
+          "Tout est regroupe ici pour eviter de chercher dans plusieurs pages."
+        ].join("\n")
+      )
+      .setTimestamp();
 
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      return;
-    }
+    for (const category of categories) {
+      const lines = commands.filter((item) => item.category === category).map(commandLine);
+      const chunks = splitFieldValue(lines);
 
-    const pages = categories
-      .filter((category) => !categoryFilter || category.includes(categoryFilter.toLowerCase()))
-      .map((category, index, filteredCategories) => {
-        const categoryCommands = commands.filter((item) => item.category === category);
-        return new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle(index === 0 && !categoryFilter ? "Centre d'aide Astro" : `Catégorie ${category}`)
-          .setDescription(
-            index === 0 && !categoryFilter
-              ? [
-                  `Commandes chargées: **${commands.length}**`,
-                  `Catégories: **${categories.length}**`,
-                  `Serveur: **${interaction.guild?.name ?? "DM"}**`,
-                  `Dashboard: **${config.DASHBOARD_ENABLED ? "activé" : "désactivé"}**`,
-                  "Le bot reste entièrement utilisable depuis Discord."
-                ].join("\n")
-              : `Commandes de la catégorie **${category}**.`
-          )
-          .addFields({
-            name: "Commandes",
-            value: categoryCommands.map((item) => `\`/${item.data.name}\` - ${item.data.description}`).join("\n") || "Aucune"
-          })
-          .setFooter({ text: `Page ${index + 1}/${filteredCategories.length}` })
-          .setTimestamp();
+      chunks.forEach((chunk, index) => {
+        embed.addFields({
+          name: `${categoryLabels[category] ?? category}${chunks.length > 1 ? ` (${index + 1})` : ""}`,
+          value: chunk || "Aucune commande"
+        });
       });
-
-    if (pages.length === 0) {
-      await interaction.reply({ content: "Aucune catégorie trouvée.", ephemeral: true });
-      return;
     }
 
-    await paginateEmbeds(interaction, pages, true);
+    await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 };
 
