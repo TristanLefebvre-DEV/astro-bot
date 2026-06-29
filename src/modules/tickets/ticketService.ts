@@ -6,6 +6,7 @@ import {
   EmbedBuilder,
   ModalBuilder,
   PermissionFlagsBits,
+  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
   type ButtonInteraction,
@@ -13,35 +14,49 @@ import {
   type GuildMember,
   type GuildTextBasedChannel,
   type ModalSubmitInteraction,
+  type StringSelectMenuInteraction,
   type TextChannel,
   type User
 } from "discord.js";
 import type { Model } from "mongoose";
-import { GuildConfig, Ticket } from "../../database/models/index.js";
 import { defaultGuildConfig } from "../../config/defaultConfig.js";
+import { GuildConfig, Ticket } from "../../database/models/index.js";
 import { embeds } from "../../utils/embeds.js";
 import { renderMessagesTranscript } from "../../utils/transcripts.js";
 
 const openTicketCustomId = "ticket:open";
+const ticketCategoryCustomId = "ticket:category";
 const closeTicketCustomId = "ticket:close";
 const deleteTicketCustomId = "ticket:delete";
 const addMemberCustomId = "ticket:add_member";
 const addMemberModalCustomId = "ticket:add_member_modal";
 
+const ticketCategories: Record<string, { label: string; emoji: string; description: string }> = {
+  support: { label: "Support", emoji: "🛠️", description: "Aide generale, question ou probleme simple." },
+  report: { label: "Signalement", emoji: "🚨", description: "Signaler un membre, un bug ou un abus." },
+  billing: { label: "Boutique", emoji: "💳", description: "Achat, paiement, recompense ou premium." },
+  appeal: { label: "Contestations", emoji: "⚖️", description: "Contester une sanction ou demander une verification." },
+  other: { label: "Autre demande", emoji: "📩", description: "Demande qui ne rentre pas dans les autres categories." }
+};
+const fallbackTicketCategory = ticketCategories.support!;
+
 function ticketControls(disabled = false): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(closeTicketCustomId)
-      .setLabel("Fermer le ticket")
+      .setLabel("Fermer")
+      .setEmoji("🔒")
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled),
     new ButtonBuilder()
       .setCustomId(deleteTicketCustomId)
-      .setLabel("Supprimer le ticket")
+      .setLabel("Supprimer")
+      .setEmoji("🗑️")
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(addMemberCustomId)
-      .setLabel("Ajouter un membre")
+      .setLabel("Ajouter")
+      .setEmoji("➕")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled)
   );
@@ -49,7 +64,23 @@ function ticketControls(disabled = false): ActionRowBuilder<ButtonBuilder> {
 
 function openTicketRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(openTicketCustomId).setLabel("Créer un ticket").setStyle(ButtonStyle.Primary)
+    new ButtonBuilder().setCustomId(openTicketCustomId).setLabel("Creer un ticket").setEmoji("🎫").setStyle(ButtonStyle.Primary)
+  );
+}
+
+function ticketCategoryRow(): ActionRowBuilder<StringSelectMenuBuilder> {
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(ticketCategoryCustomId)
+      .setPlaceholder("Choisir une categorie")
+      .addOptions(
+        Object.entries(ticketCategories).map(([value, category]) => ({
+          label: category.label,
+          value,
+          emoji: category.emoji,
+          description: category.description
+        }))
+      )
   );
 }
 
@@ -82,12 +113,13 @@ export async function createTicketChannel(input: {
   const supportRoleIds: string[] = config?.tickets?.supportRoleIds ?? [];
   const categoryId: string | null = config?.tickets?.categoryId ?? null;
   const safeName = input.owner.username.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 16) || "user";
+  const category = ticketCategories[input.type] ?? fallbackTicketCategory;
 
   const channel = await input.guild.channels.create({
     name: `ticket-${safeName}`,
     type: ChannelType.GuildText,
     parent: categoryId ?? undefined,
-    topic: `Ticket ${input.type} ouvert par ${input.owner.tag} (${input.owner.id})`,
+    topic: `${category.label} ouvert par ${input.owner.tag} (${input.owner.id})`,
     permissionOverwrites: [
       {
         id: input.guild.roles.everyone.id,
@@ -119,12 +151,17 @@ export async function createTicketChannel(input: {
       embeds.ticket({
         title: "Ticket ouvert",
         description: [
-          `Type: **${input.type}**`,
+          `Categorie: **${category.emoji} ${category.label}**`,
           `Auteur: ${input.owner}`,
-          "Explique ton besoin clairement. Le staff te répondra dès que possible."
+          "",
+          "Explique ton besoin clairement et ajoute les preuves utiles si necessaire.",
+          "Le staff prendra le ticket des que possible."
         ].join("\n"),
         guild: input.guild
-      })
+      }).addFields(
+        { name: "Statut", value: "Ouvert", inline: true },
+        { name: "Priorite", value: input.type === "report" ? "Haute" : "Normale", inline: true }
+      )
     ],
     components: [ticketControls()]
   });
@@ -140,16 +177,22 @@ export async function sendTicketPanel(input: {
   await input.channel.send({
     embeds: [
       embeds.ticket({
-        title: "Support",
+        title: "Centre de support",
         description: [
-          "Besoin d'aide ? Clique sur le bouton ci-dessous pour ouvrir un ticket privé.",
-          "Un membre du staff te répondra dès que possible."
+          "Ouvre un ticket uniquement si ta demande necessite une reponse du staff.",
+          "Choisis la categorie la plus proche de ton probleme pour accelerer la prise en charge."
         ].join("\n"),
         guild: input.guild,
         user: input.createdBy
-      })
+      }).addFields(
+        { name: "🛠️ Support", value: "Questions, aide generale, probleme simple.", inline: true },
+        { name: "🚨 Signalement", value: "Membre, bug, abus ou situation urgente.", inline: true },
+        { name: "💳 Boutique", value: "Achat, paiement, premium ou recompense.", inline: true },
+        { name: "⚖️ Contestations", value: "Sanction, verification ou appel.", inline: true },
+        { name: "📩 Autre", value: "Demande particuliere.", inline: true }
+      )
     ],
-    components: [openTicketRow()]
+    components: [ticketCategoryRow(), openTicketRow()]
   });
 }
 
@@ -182,8 +225,8 @@ export async function closeTicket(input: {
   await input.channel.send({
     embeds: [
       embeds.ticket({
-        title: "Ticket fermé",
-        description: [`Fermé par: ${input.closedBy}`, `Raison: ${input.reason}`].join("\n"),
+        title: "Ticket ferme",
+        description: [`Ferme par: ${input.closedBy}`, `Raison: ${input.reason}`, "", "Le ticket est verrouille."].join("\n"),
         guild: input.guild
       })
     ],
@@ -201,7 +244,7 @@ export async function closeAndDeleteTicket(input: {
 }): Promise<boolean> {
   const { ticket } = await closeTicket(input);
   if (!ticket) return false;
-  await input.channel.delete(`Ticket supprimé par ${input.closedBy.tag}: ${input.reason}`);
+  await input.channel.delete(`Ticket supprime par ${input.closedBy.tag}: ${input.reason}`);
   return true;
 }
 
@@ -227,11 +270,13 @@ export async function deleteTicketChannel(input: {
 
   ticket.status = "deleted";
   await ticket.save();
-  await input.channel.delete(`Ticket supprimé par ${input.deletedBy.tag}: ${input.reason}`);
+  await input.channel.delete(`Ticket supprime par ${input.deletedBy.tag}: ${input.reason}`);
   return true;
 }
 
-async function canManageTicket(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<boolean> {
+async function canManageTicket(
+  interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction
+): Promise<boolean> {
   if (!interaction.inCachedGuild()) return false;
   const ticket = await (Ticket as Model<any>).findOne({
     guildId: interaction.guild.id,
@@ -242,22 +287,48 @@ async function canManageTicket(interaction: ButtonInteraction | ModalSubmitInter
   return ticket.ownerId === interaction.user.id || interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels);
 }
 
-async function findTicketChannel(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<TextChannel | null> {
+async function findTicketChannel(
+  interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction
+): Promise<TextChannel | null> {
   if (!interaction.inCachedGuild() || interaction.channel?.type !== ChannelType.GuildText) return null;
   return interaction.channel as TextChannel;
 }
 
-export async function handleTicketComponent(interaction: ButtonInteraction | ModalSubmitInteraction): Promise<boolean> {
+export async function handleTicketComponent(
+  interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction
+): Promise<boolean> {
   if (interaction.isButton() && interaction.customId === openTicketCustomId) {
     if (!interaction.inCachedGuild()) return true;
     const channel = await createTicketChannel({
       guild: interaction.guild,
       owner: interaction.user,
       member: interaction.member,
-      type: "general"
+      type: "support"
     });
     await interaction.reply({
-      embeds: [embeds.success({ title: "Ticket créé", description: `Ton ticket est prêt : ${channel}` })],
+      embeds: [embeds.success({ title: "Ticket cree", description: `Ton ticket est pret : ${channel}` })],
+      ephemeral: true
+    });
+    return true;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === ticketCategoryCustomId) {
+    if (!interaction.inCachedGuild()) return true;
+    const type = interaction.values[0] ?? "support";
+    const channel = await createTicketChannel({
+      guild: interaction.guild,
+      owner: interaction.user,
+      member: interaction.member,
+      type
+    });
+    const category = ticketCategories[type] ?? fallbackTicketCategory;
+    await interaction.reply({
+      embeds: [
+        embeds.success({
+          title: "Ticket cree",
+          description: `Categorie: **${category.emoji} ${category.label}**\nSalon: ${channel}`
+        })
+      ],
       ephemeral: true
     });
     return true;
@@ -267,11 +338,17 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
     if (!interaction.inCachedGuild()) return true;
     const channel = await findTicketChannel(interaction);
     if (!channel || !(await canManageTicket(interaction))) {
-      await interaction.reply({ embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })], ephemeral: true });
+      await interaction.reply({
+        embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })],
+        ephemeral: true
+      });
       return true;
     }
     await closeTicket({ guild: interaction.guild, channel, closedBy: interaction.user, reason: "Fermeture via bouton" });
-    await interaction.reply({ embeds: [embeds.success({ title: "Ticket fermé", description: "Le ticket est fermé. Tu peux maintenant le supprimer." })], ephemeral: true });
+    await interaction.reply({
+      embeds: [embeds.success({ title: "Ticket ferme", description: "Le ticket est verrouille. Tu peux maintenant le supprimer." })],
+      ephemeral: true
+    });
     return true;
   }
 
@@ -279,10 +356,13 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
     if (!interaction.inCachedGuild()) return true;
     const channel = await findTicketChannel(interaction);
     if (!channel || !(await canManageTicket(interaction))) {
-      await interaction.reply({ embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })], ephemeral: true });
+      await interaction.reply({
+        embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })],
+        ephemeral: true
+      });
       return true;
     }
-    await interaction.reply({ embeds: [embeds.success({ title: "Suppression", description: "Le ticket va être supprimé." })], ephemeral: true });
+    await interaction.reply({ embeds: [embeds.success({ title: "Suppression", description: "Le ticket va etre supprime." })], ephemeral: true });
     await deleteTicketChannel({ guild: interaction.guild, channel, deletedBy: interaction.user, reason: "Suppression via bouton" });
     return true;
   }
@@ -290,7 +370,10 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
   if (interaction.isButton() && interaction.customId === addMemberCustomId) {
     if (!interaction.inCachedGuild()) return true;
     if (!(await canManageTicket(interaction))) {
-      await interaction.reply({ embeds: [embeds.error({ title: "Permissions insuffisantes", description: "Tu ne peux pas gérer ce ticket." })], ephemeral: true });
+      await interaction.reply({
+        embeds: [embeds.error({ title: "Permissions insuffisantes", description: "Tu ne peux pas gerer ce ticket." })],
+        ephemeral: true
+      });
       return true;
     }
 
@@ -299,7 +382,7 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("user_id")
-          .setLabel("ID du membre à ajouter")
+          .setLabel("ID du membre a ajouter")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMinLength(17)
@@ -314,14 +397,17 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
     if (!interaction.inCachedGuild()) return true;
     const channel = await findTicketChannel(interaction);
     if (!channel || !(await canManageTicket(interaction))) {
-      await interaction.reply({ embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })], ephemeral: true });
+      await interaction.reply({
+        embeds: [embeds.error({ title: "Action impossible", description: "Ticket introuvable ou permissions insuffisantes." })],
+        ephemeral: true
+      });
       return true;
     }
 
     const userId = interaction.fields.getTextInputValue("user_id").trim();
     const member = await interaction.guild.members.fetch(userId).catch(() => null);
     if (!member) {
-      await interaction.reply({ embeds: [embeds.error({ title: "Membre introuvable", description: "Vérifie l'ID du membre." })], ephemeral: true });
+      await interaction.reply({ embeds: [embeds.error({ title: "Membre introuvable", description: "Verifie l'ID du membre." })], ephemeral: true });
       return true;
     }
 
@@ -330,8 +416,10 @@ export async function handleTicketComponent(interaction: ButtonInteraction | Mod
       SendMessages: true,
       ReadMessageHistory: true
     });
-    await interaction.reply({ embeds: [embeds.success({ title: "Membre ajouté", description: `${member} a accès au ticket.` })], ephemeral: true });
-    await channel.send({ embeds: [new EmbedBuilder().setColor(0x4f8cff).setDescription(`${member} a été ajouté au ticket par ${interaction.user}.`)] });
+    await interaction.reply({ embeds: [embeds.success({ title: "Membre ajoute", description: `${member} a acces au ticket.` })], ephemeral: true });
+    await channel.send({
+      embeds: [new EmbedBuilder().setColor(0x4f8cff).setDescription(`${member} a ete ajoute au ticket par ${interaction.user}.`)]
+    });
     return true;
   }
 

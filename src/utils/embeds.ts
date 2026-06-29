@@ -1,25 +1,70 @@
-import { Colors, EmbedBuilder, type Guild, type User } from "discord.js";
+import { EmbedBuilder, type Guild, type User } from "discord.js";
+
+export const embedTheme = {
+  colors: {
+    success: 0x2ecc71,
+    error: 0xed4245,
+    warning: 0xf59e0b,
+    info: 0x5865f2,
+    moderation: 0xe74c3c,
+    ticket: 0x00b2ff,
+    security: 0xf1c40f,
+    logs: 0x95a5a6,
+    confirmation: 0xffcc4d,
+    dashboard: 0x9b59b6,
+    maintenance: 0x2b2d31
+  },
+  icons: {
+    success: "✅",
+    error: "⛔",
+    warning: "⚠️",
+    info: "ℹ️",
+    moderation: "🛡️",
+    ticket: "🎫",
+    security: "🔐",
+    logs: "📋",
+    confirmation: "❔",
+    dashboard: "📊",
+    maintenance: "🛠️"
+  },
+  footer: "Astro Bot • Interface Discord"
+} as const;
+
+type EmbedKind = keyof typeof embedTheme.colors;
 
 interface EmbedOptions {
   title: string;
   description?: string;
   guild?: Guild | null;
   user?: User | null;
+  thumbnail?: string | null;
+  image?: string | null;
+  footer?: string | null;
+  timestamp?: boolean;
 }
 
-function baseEmbed(color: number, options: EmbedOptions): EmbedBuilder {
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(options.title)
-    .setDescription(options.description ?? null)
-    .setTimestamp();
+function cleanDescription(description?: string): string | null {
+  if (!description) return null;
+  return description.length > 3900 ? `${description.slice(0, 3890)}...` : description;
+}
 
-  if (options.guild) {
-    embed.setFooter({
-      text: options.guild.name,
-      iconURL: options.guild.iconURL() ?? undefined
-    });
-  }
+function baseEmbed(kind: EmbedKind, options: EmbedOptions): EmbedBuilder {
+  const icon = embedTheme.icons[kind];
+  const embed = new EmbedBuilder()
+    .setColor(embedTheme.colors[kind])
+    .setTitle(`${icon} ${options.title}`)
+    .setDescription(cleanDescription(options.description));
+
+  if (options.timestamp !== false) embed.setTimestamp();
+
+  if (options.thumbnail) embed.setThumbnail(options.thumbnail);
+  if (options.image) embed.setImage(options.image);
+
+  const footerText = options.footer ?? (options.guild ? `${options.guild.name} • ${embedTheme.footer}` : embedTheme.footer);
+  embed.setFooter({
+    text: footerText,
+    iconURL: options.guild?.iconURL() ?? undefined
+  });
 
   if (options.user) {
     embed.setAuthor({
@@ -32,15 +77,25 @@ function baseEmbed(color: number, options: EmbedOptions): EmbedBuilder {
 }
 
 export const embeds = {
-  success: (options: EmbedOptions) => baseEmbed(Colors.Green, options),
-  error: (options: EmbedOptions) => baseEmbed(Colors.Red, options),
-  warning: (options: EmbedOptions) => baseEmbed(Colors.Orange, options),
-  info: (options: EmbedOptions) => baseEmbed(Colors.Blurple, options),
-  moderation: (options: EmbedOptions) => baseEmbed(Colors.DarkRed, options),
-  ticket: (options: EmbedOptions) => baseEmbed(Colors.Aqua, options),
-  security: (options: EmbedOptions) => baseEmbed(Colors.Gold, options),
-  logs: (options: EmbedOptions) => baseEmbed(Colors.Grey, options),
-  confirmation: (options: EmbedOptions) => baseEmbed(Colors.Yellow, options),
-  dashboard: (options: EmbedOptions) => baseEmbed(Colors.Purple, options),
-  maintenance: (options: EmbedOptions) => baseEmbed(Colors.DarkButNotBlack, options)
+  success: (options: EmbedOptions) => baseEmbed("success", options),
+  error: (options: EmbedOptions) => baseEmbed("error", options),
+  warning: (options: EmbedOptions) => baseEmbed("warning", options),
+  info: (options: EmbedOptions) => baseEmbed("info", options),
+  moderation: (options: EmbedOptions) => baseEmbed("moderation", options),
+  ticket: (options: EmbedOptions) => baseEmbed("ticket", options),
+  security: (options: EmbedOptions) => baseEmbed("security", options),
+  logs: (options: EmbedOptions) => baseEmbed("logs", options),
+  confirmation: (options: EmbedOptions) => baseEmbed("confirmation", options),
+  dashboard: (options: EmbedOptions) => baseEmbed("dashboard", options),
+  maintenance: (options: EmbedOptions) => baseEmbed("maintenance", options),
+  permission: (options: Omit<EmbedOptions, "title"> & { title?: string }) =>
+    baseEmbed("error", { ...options, title: options.title ?? "Permission manquante" }),
+  cooldown: (options: Omit<EmbedOptions, "title"> & { title?: string }) =>
+    baseEmbed("warning", { ...options, title: options.title ?? "Commande en cooldown" }),
+  unknownCommand: (options: Omit<EmbedOptions, "title"> & { title?: string }) =>
+    baseEmbed("error", { ...options, title: options.title ?? "Commande inconnue" }),
+  userNotFound: (options: Omit<EmbedOptions, "title"> & { title?: string }) =>
+    baseEmbed("error", { ...options, title: options.title ?? "Utilisateur introuvable" }),
+  configUpdated: (options: Omit<EmbedOptions, "title"> & { title?: string }) =>
+    baseEmbed("success", { ...options, title: options.title ?? "Configuration modifiee" })
 };
