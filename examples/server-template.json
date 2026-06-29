@@ -1,0 +1,25 @@
+{
+  "name": "Community Premium",
+  "roles": [
+    { "name": "Admin", "color": "#ef4444", "permissions": ["Administrator"] },
+    { "name": "Moderateur", "color": "#3b82f6", "permissions": ["ManageMessages", "KickMembers", "BanMembers"] },
+    { "name": "Membre", "color": "#22c55e", "permissions": [] }
+  ],
+  "categories": [
+    {
+      "name": "Accueil",
+      "channels": [
+        { "name": "reglement", "type": "text" },
+        { "name": "annonces", "type": "text" },
+        { "name": "verification", "type": "text" }
+      ]
+    },
+    {
+      "name": "Support",
+      "channels": [
+        { "name": "ouvrir-un-ticket", "type": "text" },
+        { "name": "logs-tickets", "type": "text" }
+      ]
+    }
+  ]
+}
